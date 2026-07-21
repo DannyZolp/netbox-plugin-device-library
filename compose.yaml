@@ -1,5 +1,5 @@
 services:
-  netbox:
+  netbox: &netbox
     image: netboxcommunity/netbox:v4.5.10
     depends_on:
       - redis
@@ -10,8 +10,10 @@ services:
       DB_USER: netbox
       DB_PASSWORD: netbox
       REDIS_HOST: redis
+      REDIS_DATABASE: 0
       REDIS_PASSWORD: netbox
       REDIS_CACHE_HOST: redis
+      REDIS_CACHE_DATABASE: 1
       REDIS_CACHE_PASSWORD: netbox
       SECRET_KEY: development-only0000000000000000000000000000000000
       API_TOKEN_PEPPER_1: development-only0000000000000000000000000000000000
@@ -20,11 +22,27 @@ services:
       SUPERUSER_PASSWORD: admin
       ALLOWED_HOSTS: localhost 127.0.0.1 [::1]
       PYTHONPATH: /opt/netbox/plugins
+    healthcheck:
+      test: curl -f http://localhost:8080/login/ || exit 1
+      start_period: 90s
+      timeout: 3s
+      interval: 15s
     volumes:
       - ./netbox_plugin_device_library:/opt/netbox/plugins/netbox_plugin_device_library:ro
       - ./.compose/config/plugins.py:/etc/netbox/config/plugins.py:ro
     ports:
       - "8000:8080"
+
+  netbox-worker:
+    <<: *netbox
+    depends_on:
+      netbox:
+        condition: service_healthy
+    command:
+      - /opt/netbox/venv/bin/python
+      - /opt/netbox/netbox/manage.py
+      - rqworker
+    ports: []
 
   postgres:
     image: postgres:16-alpine
