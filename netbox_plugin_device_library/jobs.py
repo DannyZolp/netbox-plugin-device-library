@@ -7,7 +7,6 @@ from time import monotonic
 from urllib.parse import quote, unquote, urlparse
 
 from core.events import JOB_STARTED
-from django.contrib.contenttypes.models import ContentType
 from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils.text import slugify
@@ -337,8 +336,8 @@ class LibraryObjectImportJob(JobRunner):
             image_urls["rear"] = self._get_image_uri(document, "rear")
 
         imported_object, created = self._import_netbox_object(record["object_type"], document)
-        attachments = {
-            face: self._attach_image(imported_object, face, uri)
+        images = {
+            face: self._set_object_image(imported_object, face, uri)
             for face, uri in image_urls.items()
         }
         self.job.data = {
@@ -349,16 +348,21 @@ class LibraryObjectImportJob(JobRunner):
                 "created": created,
             },
             "image_urls": image_urls,
-            "attachments": attachments,
+            "images": images,
         }
         self.job.save(update_fields=["data"])
         self.logger.info(
             f"Imported {record['object_type']} {document['manufacturer']} {document['model']}"
         )
 
-    def _attach_image(self, imported_object, face: str, uri: str):
-        """Download a library image and attach it to its NetBox object."""
-        from extras.models import ImageAttachment
+    def _set_object_image(self, imported_object, face: str, uri: str):
+        """Download a library image into the matching NetBox image field."""
+        field_name = f"{face}_image"
+        if not hasattr(imported_object, field_name):
+            self.logger.warning(
+                f"{imported_object._meta.verbose_name} does not support {field_name}; skipping image upload"
+            )
+            return None
 
         response = requests.get(
             uri,
@@ -368,33 +372,11 @@ class LibraryObjectImportJob(JobRunner):
         response.raise_for_status()
 
         filename = unquote(urlparse(uri).path.rsplit("/", 1)[-1])
-        attachment_name = f"Device Library {face}"
-        content_type = ContentType.objects.get_for_model(imported_object, for_concrete_model=False)
+        setattr(imported_object, field_name, ContentFile(response.content, name=filename))
+        imported_object.save(update_fields=[field_name])
 
-        # Reuse an attachment created by this plugin on later imports, while
-        # leaving any manually attached images untouched.
-        attachment = ImageAttachment.objects.filter(
-            object_type=content_type,
-            object_id=imported_object.pk,
-            name=attachment_name,
-            description="Imported from Device Library",
-        ).first()
-        if attachment is None:
-            attachment = ImageAttachment(
-                object_type=content_type,
-                object_id=imported_object.pk,
-                name=attachment_name,
-                description="Imported from Device Library",
-            )
-        old_storage = attachment.image.storage if attachment.image else None
-        old_image_name = attachment.image.name if attachment.image else None
-        attachment.image = ContentFile(response.content, name=filename)
-        attachment.save()
-        if old_storage and old_image_name and old_image_name != attachment.image.name:
-            old_storage.delete(old_image_name)
-
-        self.logger.info(f"Attached {face} image to {imported_object}")
-        return {"id": attachment.pk, "uri": uri}
+        self.logger.info(f"Uploaded {face} image for {imported_object}")
+        return {"field": field_name, "uri": uri}
 
     def _get_image_uri(self, document: dict, face: str):
         """Look up an imported image by the YAML object's slug and face."""
