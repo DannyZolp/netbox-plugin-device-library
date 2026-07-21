@@ -1,0 +1,19 @@
+{% load i18n %}
+
+<div class="modal modal-blur fade" id="library-search-modal-{{ object_type }}" tabindex="-1" aria-labelledby="library-search-modal-title-{{ object_type }}" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title" id="library-search-modal-title-{{ object_type }}">{% trans 'Search Device Library' %}</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{% trans 'Close' %}"></button>
+      </div>
+      <div class="modal-body">
+        <form hx-get="{% url 'plugins:netbox_plugin_device_library:library_search' %}" hx-target="#library-search-results-{{ object_type }}" hx-trigger="input delay:300ms, submit">
+          <input type="hidden" name="object_type" value="{{ object_type }}">
+          <input type="search" class="form-control" name="q" placeholder="{% trans 'Search manufacturer, model, or part number' %}" aria-label="{% trans 'Search device library' %}" autocomplete="off">
+        </form>
+        <div id="library-search-results-{{ object_type }}" class="mt-3"></div>
+      </div>
+    </div>
+  </div>
+</div>

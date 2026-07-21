@@ -1,6 +1,8 @@
 {% load i18n %}
 
-<a href="{% url 'plugins:netbox_plugin_device_library:settings' %}?library_type={{ object_type }}" class="btn btn-secondary">
+<button type="button" class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#library-search-modal-{{ object_type }}" hx-get="{% url 'plugins:netbox_plugin_device_library:library_search' %}?object_type={{ object_type }}" hx-target="#library-search-results-{{ object_type }}">
   <span class="mdi mdi-library-plus" aria-hidden="true"></span>
   {% trans 'Add from Library' %}
-</a>
+</button>
+
+{% include 'netbox_plugin_device_library/partials/library_search_modal.html' %}

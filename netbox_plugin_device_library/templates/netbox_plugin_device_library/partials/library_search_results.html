@@ -26,13 +26,13 @@
     <nav aria-label="{% trans 'Library search results' %}">
       <ul class="pagination justify-content-center mb-0">
         <li class="page-item {% if not page_obj.has_previous %}disabled{% endif %}">
-          <button class="page-link" type="button" {% if page_obj.has_previous %}hx-get="{% url 'plugins:netbox_plugin_device_library:library_search' %}?object_type={{ object_type }}&amp;q={{ query|urlencode }}&amp;page={{ page_obj.previous_page_number }}" hx-target="#library-search-results"{% else %}disabled{% endif %}>
+          <button class="page-link" type="button" {% if page_obj.has_previous %}hx-get="{% url 'plugins:netbox_plugin_device_library:library_search' %}?object_type={{ object_type }}&amp;q={{ query|urlencode }}&amp;page={{ page_obj.previous_page_number }}" hx-target="#library-search-results-{{ object_type }}"{% else %}disabled{% endif %}>
             {% trans 'Previous' %}
           </button>
         </li>
         <li class="page-item disabled"><span class="page-link">{% blocktrans with page=page_obj.number total=page_obj.paginator.num_pages %}Page {{ page }} of {{ total }}{% endblocktrans %}</span></li>
         <li class="page-item {% if not page_obj.has_next %}disabled{% endif %}">
-          <button class="page-link" type="button" {% if page_obj.has_next %}hx-get="{% url 'plugins:netbox_plugin_device_library:library_search' %}?object_type={{ object_type }}&amp;q={{ query|urlencode }}&amp;page={{ page_obj.next_page_number }}" hx-target="#library-search-results"{% else %}disabled{% endif %}>
+          <button class="page-link" type="button" {% if page_obj.has_next %}hx-get="{% url 'plugins:netbox_plugin_device_library:library_search' %}?object_type={{ object_type }}&amp;q={{ query|urlencode }}&amp;page={{ page_obj.next_page_number }}" hx-target="#library-search-results-{{ object_type }}"{% else %}disabled{% endif %}>
             {% trans 'Next' %}
           </button>
         </li>

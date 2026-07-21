@@ -36,18 +36,12 @@ class SettingsView(ContentTypePermissionRequiredMixin, View):
         return formset_class(*args, queryset=LibrarySource.objects.all(), **kwargs)
 
     def get(self, request):
-        library_search_type = request.GET.get("library_type", "device")
-        if library_search_type not in LibrarySearchView.models_by_type:
-            library_search_type = "device"
-
         return render(
             request,
             self.template_name,
             {
                 "formset": self.get_formset(),
                 "sync_running": sync_job_is_enqueued(),
-                "library_search_type": library_search_type,
-                "open_library_search": "library_type" in request.GET,
             },
         )
 
@@ -65,8 +59,6 @@ class SettingsView(ContentTypePermissionRequiredMixin, View):
             {
                 "formset": formset,
                 "sync_running": sync_job_is_enqueued(),
-                "library_search_type": "device",
-                "open_library_search": False,
             },
         )
 
