@@ -72,6 +72,16 @@
     const sourceForms = document.getElementById('library-source-forms')
     const totalForms = document.getElementById('id_form-TOTAL_FORMS')
     const emptyForm = document.getElementById('library-source-empty-form')
+    const settingsForm = document.getElementById('library-sources-form')
+    const githubRepositoryPattern = /^https:\/\/github\.com\/[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]+(?:\.git)?\/?$/i
+
+    function validateRepository(input) {
+      const isMarkedForDeletion = input.closest('.library-source-form')?.querySelector('input[name$="-DELETE"]')?.checked
+      const isValid = isMarkedForDeletion || !input.value || githubRepositoryPattern.test(input.value.trim())
+      input.setCustomValidity(isValid ? '' : 'Enter an HTTPS GitHub repository URL, for example https://github.com/user/repository.')
+      input.classList.toggle('is-invalid', !isValid)
+      return isValid
+    }
     
     document.getElementById('add-library-source').addEventListener('click', () => {
       const index = totalForms.value
@@ -88,14 +98,27 @@
     sourceForms.addEventListener('click', (event) => {
       const removeButton = event.target.closest('.remove-library-source')
       if (!removeButton) return
+      event.preventDefault()
       const form = removeButton.closest('.library-source-form')
       const deleteInput = form.querySelector('input[name$="-DELETE"]')
-      const idInput = form.querySelector('input[name$="-id"]')
-      if (deleteInput && idInput && idInput.value) {
+      if (deleteInput) {
         deleteInput.checked = true
         form.classList.add('d-none')
-      } else {
-        form.remove()
+      }
+    })
+
+    sourceForms.addEventListener('input', (event) => {
+      if (event.target.matches('input[name$="-repository"]')) {
+        validateRepository(event.target)
+      }
+    })
+
+    settingsForm.addEventListener('submit', (event) => {
+      const repositoryInputs = settingsForm.querySelectorAll('input[name$="-repository"]')
+      const isValid = [...repositoryInputs].every(validateRepository)
+      if (!isValid) {
+        event.preventDefault()
+        settingsForm.reportValidity()
       }
     })
   </script>

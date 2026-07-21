@@ -14,6 +14,8 @@ class LibrarySourceForm(forms.ModelForm):
                 attrs={
                     "class": "form-control",
                     "placeholder": "https://github.com/user/netbox-device-library",
+                    "pattern": r"https://github\.com/[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]+(?:\.git)?/?",
+                    "title": "Enter a HTTPS GitHub repository URL",
                 }
             )
         }
