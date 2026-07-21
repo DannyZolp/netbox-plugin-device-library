@@ -1,9 +1,9 @@
 """Views for the Device Library plugin."""
 
 from django.contrib import messages
+from django.contrib.postgres.search import SearchQuery, SearchVector
 from django.core.paginator import Paginator
 from django.db import transaction
-from django.db.models import Q
 from django.forms import modelformset_factory
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -111,10 +111,14 @@ class LibrarySearchView(ContentTypePermissionRequiredMixin, View):
         query = request.GET.get("q", "").strip()
         queryset = model.objects.order_by("manufacturer_name", "name")
         if query:
-            queryset = queryset.filter(
-                Q(manufacturer_name__icontains=query)
-                | Q(name__icontains=query)
-                | Q(part_number__icontains=query)
+            search_vector = SearchVector(
+                "manufacturer_name",
+                "name",
+                "part_number",
+                config="english",
+            )
+            queryset = queryset.annotate(search=search_vector).filter(
+                search=SearchQuery(query, config="english", search_type="plain")
             )
 
         page_obj = Paginator(queryset, self.page_size).get_page(request.GET.get("page"))
