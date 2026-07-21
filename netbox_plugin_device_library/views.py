@@ -1,6 +1,7 @@
 """Views for the Device Library plugin."""
 
 from django.contrib import messages
+from django.db import transaction
 from django.forms import modelformset_factory
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -35,7 +36,8 @@ class SettingsView(ContentTypePermissionRequiredMixin, View):
     def post(self, request):
         formset = self.get_formset(request.POST)
         if formset.is_valid():
-            formset.save()
+            with transaction.atomic():
+                formset.save()
             messages.success(request, "Device library settings saved.")
             return redirect(reverse("plugins:netbox_plugin_device_library:settings"))
 

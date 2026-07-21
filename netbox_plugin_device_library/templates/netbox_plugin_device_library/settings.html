@@ -31,7 +31,7 @@
                 {{ hidden }}
               {% endfor %}
               {{ form.repository }}
-              <button type="button" class="btn btn-outline-danger remove-library-source" aria-label="{% trans 'Remove library' %}"><span class="mdi mdi-trash-can-outline" aria-hidden="true"></span></button>
+              <button type="button" class="btn btn-outline-danger remove-library-source" aria-label="{% trans 'Delete library' %}" title="{% trans 'Delete library' %}" data-delete-label="{% trans 'Delete library' %}" data-undo-label="{% trans 'Undo deletion' %}"><span class="mdi mdi-trash-can-outline" aria-hidden="true"></span></button>
               <span class="d-none">{{ form.DELETE }}</span>
               {% if form.repository.errors %}
                 <div class="invalid-feedback d-block">{{ form.repository.errors.0 }}</div>
@@ -60,7 +60,7 @@
         {{ hidden }}
       {% endfor %}
       {{ formset.empty_form.repository }}
-      <button type="button" class="btn btn-outline-danger remove-library-source" aria-label="{% trans 'Remove library' %}"><span class="mdi mdi-trash-can-outline" aria-hidden="true"></span></button>
+      <button type="button" class="btn btn-outline-danger remove-library-source" aria-label="{% trans 'Delete library' %}" title="{% trans 'Delete library' %}" data-delete-label="{% trans 'Delete library' %}" data-undo-label="{% trans 'Undo deletion' %}"><span class="mdi mdi-trash-can-outline" aria-hidden="true"></span></button>
       <span class="d-none">{{ formset.empty_form.DELETE }}</span>
     </div>
   </template>
@@ -72,7 +72,6 @@
     const sourceForms = document.getElementById('library-source-forms')
     const totalForms = document.getElementById('id_form-TOTAL_FORMS')
     const emptyForm = document.getElementById('library-source-empty-form')
-    const settingsForm = document.getElementById('library-sources-form')
     const githubRepositoryPattern = /^https:\/\/github\.com\/[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]+(?:\.git)?\/?$/i
 
     function validateRepository(input) {
@@ -101,10 +100,24 @@
       event.preventDefault()
       const form = removeButton.closest('.library-source-form')
       const deleteInput = form.querySelector('input[name$="-DELETE"]')
-      if (deleteInput) {
-        deleteInput.checked = true
-        form.classList.add('d-none')
-      }
+      const repositoryInput = form.querySelector('input[name$="-repository"]')
+      const icon = removeButton.querySelector('.mdi')
+      if (!deleteInput || !repositoryInput || !icon) return
+
+      const isDeleted = !deleteInput.checked
+      deleteInput.checked = isDeleted
+      deleteInput.value = isDeleted ? 'on' : ''
+      repositoryInput.disabled = isDeleted
+      form.classList.toggle('library-source-pending-delete', isDeleted)
+      removeButton.classList.toggle('btn-outline-danger', !isDeleted)
+      removeButton.classList.toggle('btn-outline-secondary', isDeleted)
+      removeButton.setAttribute('aria-pressed', isDeleted)
+      removeButton.setAttribute('aria-label', isDeleted ? removeButton.dataset.undoLabel : removeButton.dataset.deleteLabel)
+      removeButton.setAttribute('title', isDeleted ? removeButton.dataset.undoLabel : removeButton.dataset.deleteLabel)
+      icon.classList.toggle('mdi-trash-can-outline', !isDeleted)
+      icon.classList.toggle('mdi-undo', isDeleted)
+
+      validateRepository(repositoryInput)
     })
 
     sourceForms.addEventListener('input', (event) => {
@@ -113,13 +126,14 @@
       }
     })
 
-    settingsForm.addEventListener('submit', (event) => {
-      const repositoryInputs = settingsForm.querySelectorAll('input[name$="-repository"]')
-      const isValid = [...repositoryInputs].every(validateRepository)
-      if (!isValid) {
-        event.preventDefault()
-        settingsForm.reportValidity()
-      }
-    })
   </script>
 {% endblock %}
+
+{% block head %}
+  {{ block.super }}
+  <style>
+    .library-source-pending-delete input[name$="-repository"] {
+      text-decoration: line-through;
+    }
+  </style>
+{% endblock head %}
