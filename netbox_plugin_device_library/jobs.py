@@ -8,6 +8,7 @@ from urllib.parse import quote, urlparse
 
 from core.events import JOB_STARTED
 from django.db import transaction
+from django.utils.text import slugify
 from extras.models import Notification
 import requests
 import yaml
@@ -244,9 +245,75 @@ class LibraryObjectImportJob(JobRunner):
         name = "Import device library object"
 
     def run(self, *, record: dict, **kwargs):
-        """Persist the selected record payload for the next import step."""
-        self.job.data = {"record": record}
+        """Download, parse, and import one selected device-library object."""
+        response = requests.get(
+            record["github_api_url"],
+            headers={"Accept": "application/vnd.github.raw+json"},
+            timeout=30,
+        )
+        response.raise_for_status()
+        document = yaml.safe_load(response.content)
+        if not isinstance(document, dict):
+            raise ValueError("The GitHub YAML document must contain a mapping.")
+
+        if document.get("front_image") is True:
+            # Front-image import will be implemented in a later step.
+            pass
+
+        if document.get("rear_image") is True:
+            # Rear-image import will be implemented in a later step.
+            pass
+
+        imported_object, created = self._import_netbox_object(record["object_type"], document)
+        self.job.data = {
+            "record": record,
+            "imported_object": {
+                "type": record["object_type"],
+                "id": imported_object.pk,
+                "created": created,
+            },
+        }
         self.job.save(update_fields=["data"])
         self.logger.info(
-            f"Queued {record['object_type']} {record['manufacturer']} {record['model']} for import"
+            f"Imported {record['object_type']} {document['manufacturer']} {document['model']}"
         )
+
+    @staticmethod
+    def _import_netbox_object(object_type: str, document: dict):
+        """Create or update the matching NetBox DCIM type through its ORM API."""
+        from dcim.models import DeviceType, Manufacturer, ModuleType, RackType
+
+        if object_type not in {"device", "module", "rack"}:
+            raise ValueError(f"Unsupported library object type: {object_type}")
+
+        with transaction.atomic():
+            manufacturer, _ = Manufacturer.objects.get_or_create(name=document["manufacturer"])
+            model = document["model"]
+            part_number = document.get("part_number", "")
+
+            if object_type == "device":
+                return DeviceType.objects.update_or_create(
+                    manufacturer=manufacturer,
+                    model=model,
+                    defaults={
+                        "slug": document.get("slug") or slugify(model),
+                        "part_number": part_number,
+                    },
+                )
+
+            if object_type == "module":
+                return ModuleType.objects.update_or_create(
+                    manufacturer=manufacturer,
+                    model=model,
+                    defaults={"part_number": part_number},
+                )
+
+            if object_type == "rack":
+                return RackType.objects.update_or_create(
+                    manufacturer=manufacturer,
+                    model=model,
+                    defaults={
+                        "slug": document.get("slug") or slugify(model),
+                        "form_factor": document["form_factor"],
+                    },
+                )
