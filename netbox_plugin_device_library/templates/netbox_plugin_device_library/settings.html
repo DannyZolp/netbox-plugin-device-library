@@ -1,0 +1,102 @@
+{% extends 'generic/_base.html' %}
+{% load i18n %}
+
+{% block title %}
+  {% trans 'Device Library Settings' %}
+{% endblock %}
+
+{% block content %}
+  <form method="post" class="object-edit mt-5" id="library-sources-form">
+    {% csrf_token %}
+    {{ formset.management_form }}
+
+    {% if formset.non_form_errors %}
+      <div class="alert alert-danger">{{ formset.non_form_errors }}</div>
+    {% endif %}
+
+    <div class="field-group">
+      <div class="row">
+        <h2 class="col-9">{% trans 'Library Sources' %}</h2>
+      </div>
+      <div class="row mb-3">
+        <div class="col-9 text-muted">
+          {% trans 'Add the <b><u>GitHub</u></b> repositories that this plugin should use when importing device definitions.' %}
+        </div>
+      </div>
+      <div class="row mb-3">
+        <div class="col-9" id="library-source-forms">
+          {% for form in formset %}
+            <div class="input-group mb-2 library-source-form">
+              {% for hidden in form.hidden_fields %}
+                {{ hidden }}
+              {% endfor %}
+              {{ form.repository }}
+              <button type="button" class="btn btn-outline-danger remove-library-source" aria-label="{% trans 'Remove library' %}"><span class="mdi mdi-trash-can-outline" aria-hidden="true"></span></button>
+              <span class="d-none">{{ form.DELETE }}</span>
+              {% if form.repository.errors %}
+                <div class="invalid-feedback d-block">{{ form.repository.errors.0 }}</div>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-9">
+          <div class="btn-list">
+            <button type="button" class="btn btn-outline-primary" id="add-library-source">
+              <span class="mdi mdi-plus-thick" aria-hidden="true"></span>
+              {% trans 'Add Library' %}
+            </button>
+            <button type="submit" class="btn btn-primary">{% trans 'Save' %}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </form>
+
+  <template id="library-source-empty-form">
+    <div class="input-group mb-2 library-source-form">
+      {% for hidden in formset.empty_form.hidden_fields %}
+        {{ hidden }}
+      {% endfor %}
+      {{ formset.empty_form.repository }}
+      <button type="button" class="btn btn-outline-danger remove-library-source" aria-label="{% trans 'Remove library' %}"><span class="mdi mdi-trash-can-outline" aria-hidden="true"></span></button>
+      <span class="d-none">{{ formset.empty_form.DELETE }}</span>
+    </div>
+  </template>
+{% endblock %}
+
+{% block javascript %}
+  {{ block.super }}
+  <script>
+    const sourceForms = document.getElementById('library-source-forms')
+    const totalForms = document.getElementById('id_form-TOTAL_FORMS')
+    const emptyForm = document.getElementById('library-source-empty-form')
+    
+    document.getElementById('add-library-source').addEventListener('click', () => {
+      const index = totalForms.value
+      const form = emptyForm.content.cloneNode(true)
+      form.querySelectorAll('[name], [id], label').forEach((element) => {
+        if (element.name) element.name = element.name.replace('__prefix__', index)
+        if (element.id) element.id = element.id.replace('__prefix__', index)
+        if (element.htmlFor) element.htmlFor = element.htmlFor.replace('__prefix__', index)
+      })
+      sourceForms.appendChild(form)
+      totalForms.value = Number(index) + 1
+    })
+    
+    sourceForms.addEventListener('click', (event) => {
+      const removeButton = event.target.closest('.remove-library-source')
+      if (!removeButton) return
+      const form = removeButton.closest('.library-source-form')
+      const deleteInput = form.querySelector('input[name$="-DELETE"]')
+      const idInput = form.querySelector('input[name$="-id"]')
+      if (deleteInput && idInput && idInput.value) {
+        deleteInput.checked = true
+        form.classList.add('d-none')
+      } else {
+        form.remove()
+      }
+    })
+  </script>
+{% endblock %}
