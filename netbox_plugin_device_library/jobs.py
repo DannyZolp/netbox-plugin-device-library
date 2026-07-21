@@ -1,5 +1,6 @@
 """Background jobs for the Device Library plugin."""
 
+import tarfile
 from urllib.parse import urlparse
 
 import requests
@@ -17,21 +18,26 @@ class DeviceLibrarySyncJob(JobRunner):
         from .models import LibrarySource
 
         tarball_urls = {}
+        processing_results = {}
         for repository in LibrarySource.objects.order_by("repository").values_list("repository", flat=True):
             try:
                 tarball_urls[repository] = self._get_tarball_url(repository)
-            except (KeyError, ValueError, requests.RequestException) as error:
+                processing_results[repository] = self._process_tarball(tarball_urls[repository])
+            except (KeyError, ValueError, requests.RequestException, tarfile.TarError) as error:
                 self.logger.error("Failed to resolve %s: %s", repository, error)
                 # An unhandled exception marks the job errored. NetBox then sends
                 # its standard failure notification to the user who started it.
                 raise
 
-            self.logger.info("Retrieved tarball URL for %s", repository)
+            self.logger.info("Processed tarball for %s", repository)
 
-        self.job.data = {"tarball_urls": tarball_urls}
+        self.job.data = {
+            "tarball_urls": tarball_urls,
+            "processing_results": processing_results,
+        }
         self.job.save(update_fields=["data"])
 
-        self.logger.info("Retrieved tarball URLs for %d device type repositories", len(tarball_urls))
+        self.logger.info("Processed %d device type repositories", len(processing_results))
 
     def _get_tarball_url(self, repository: str):
         """Resolve the default branch's tarball redirect URL through GitHub's API."""
@@ -52,6 +58,30 @@ class DeviceLibrarySyncJob(JobRunner):
         )
         tarball_response.raise_for_status()
         return tarball_response.headers["Location"]
+
+    def _process_tarball(self, tarball_url: str):
+        """Stream every regular file in a GitHub tarball without writing to disk."""
+        file_count = 0
+        byte_count = 0
+
+        with requests.get(tarball_url, stream=True, timeout=30) as response:
+            response.raise_for_status()
+            response.raw.decode_content = True
+            with tarfile.open(fileobj=response.raw, mode="r|gz") as archive:
+                for member in archive:
+                    if not member.isfile():
+                        continue
+
+                    file_count += 1
+                    file_object = archive.extractfile(member)
+                    if file_object is None:
+                        continue
+
+                    with file_object:
+                        for block in iter(lambda: file_object.read(64 * 1024), b""):
+                            byte_count += len(block)
+
+        return {"files": file_count, "bytes": byte_count}
 
     @staticmethod
     def _get_github_repository_name(repository: str):
