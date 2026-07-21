@@ -8,6 +8,7 @@
           <th>{% trans 'Manufacturer' %}</th>
           <th>{% trans 'Model' %}</th>
           <th>{% trans 'Part Number' %}</th>
+          <th class="text-end"><span class="visually-hidden">{% trans 'Actions' %}</span></th>
         </tr>
       </thead>
       <tbody>
@@ -16,6 +17,14 @@
             <td>{{ object.manufacturer_name }}</td>
             <td>{{ object.name }}</td>
             <td>{{ object.part_number|default:"—" }}</td>
+            <td class="text-end">
+              <form hx-post="{% url 'plugins:netbox_plugin_device_library:queue_library_object_import' object_type=object_type pk=object.pk %}" hx-swap="none">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-secondary" title="{% trans 'Add from Library' %}" aria-label="{% trans 'Add from Library' %}">
+                  <span class="mdi mdi-plus" aria-hidden="true"></span>
+                </button>
+              </form>
+            </td>
           </tr>
         {% endfor %}
       </tbody>

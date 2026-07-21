@@ -235,3 +235,18 @@ class DeviceLibrarySyncJob(JobRunner):
 
         owner, name = path_parts
         return owner, name.removesuffix(".git")
+
+
+class LibraryObjectImportJob(JobRunner):
+    """Receive one selected library record for the next import stage."""
+
+    class Meta:
+        name = "Import device library object"
+
+    def run(self, *, record: dict, **kwargs):
+        """Persist the selected record payload for the next import step."""
+        self.job.data = {"record": record}
+        self.job.save(update_fields=["data"])
+        self.logger.info(
+            f"Queued {record['object_type']} {record['manufacturer']} {record['model']} for import"
+        )

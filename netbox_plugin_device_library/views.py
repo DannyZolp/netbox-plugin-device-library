@@ -5,14 +5,15 @@ from django.contrib.postgres.search import SearchQuery, SearchVector
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.forms import modelformset_factory
-from django.shortcuts import redirect, render
+from django.http import HttpResponse
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.generic import View
 from core.choices import JobStatusChoices
 from utilities.views import ContentTypePermissionRequiredMixin
 
 from .forms import LibrarySourceForm
-from .jobs import DeviceLibrarySyncJob
+from .jobs import DeviceLibrarySyncJob, LibraryObjectImportJob
 from .models import LibrarySource
 from .models import DeviceType, ModuleType, RackType
 
@@ -131,3 +132,29 @@ class LibrarySearchView(ContentTypePermissionRequiredMixin, View):
                 "query": query,
             },
         )
+
+
+class QueueLibraryObjectImportView(ContentTypePermissionRequiredMixin, View):
+    """Queue the next import task for a selected library search result."""
+
+    http_method_names = ["post"]
+
+    def get_required_permission(self):
+        return "netbox_plugin_device_library.change_librarysource"
+
+    def post(self, request, object_type, pk):
+        model = LibrarySearchView.models_by_type.get(object_type)
+        if model is None:
+            return HttpResponse(status=404)
+
+        record = get_object_or_404(model, pk=pk)
+        record_data = {
+            "id": record.pk,
+            "object_type": object_type,
+            "manufacturer": record.manufacturer_name,
+            "model": record.name,
+            "part_number": record.part_number,
+            "github_api_url": record.github_api_url,
+        }
+        LibraryObjectImportJob.enqueue(user=request.user, record=record_data)
+        return HttpResponse(status=204)
