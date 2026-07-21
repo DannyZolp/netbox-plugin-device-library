@@ -4,9 +4,11 @@ import tarfile
 from collections import defaultdict
 from pathlib import PurePosixPath
 from time import monotonic
-from urllib.parse import quote, urlparse
+from urllib.parse import quote, unquote, urlparse
 
 from core.events import JOB_STARTED
+from django.contrib.contenttypes.models import ContentType
+from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils.text import slugify
 from extras.models import Notification
@@ -289,7 +291,7 @@ class DeviceLibrarySyncJob(JobRunner):
 
     @staticmethod
     def _get_github_content_url(owner: str, name: str, path: str, ref: str):
-        """Build the GitHub Contents API request URL for one YAML file."""
+        """Build the GitHub Contents API request URL for one repository file."""
         encoded_path = quote(path, safe="/")
         encoded_ref = quote(ref, safe="")
         return f"https://api.github.com/repos/{owner}/{name}/contents/{encoded_path}?ref={encoded_ref}"
@@ -327,15 +329,18 @@ class LibraryObjectImportJob(JobRunner):
         if not isinstance(document, dict):
             raise ValueError("The GitHub YAML document must contain a mapping.")
 
+        image_urls = {}
         if document.get("front_image") is True:
-            # Front-image import will be implemented in a later step.
-            pass
+            image_urls["front"] = self._get_image_uri(document, "front")
 
         if document.get("rear_image") is True:
-            # Rear-image import will be implemented in a later step.
-            pass
+            image_urls["rear"] = self._get_image_uri(document, "rear")
 
         imported_object, created = self._import_netbox_object(record["object_type"], document)
+        attachments = {
+            face: self._attach_image(imported_object, face, uri)
+            for face, uri in image_urls.items()
+        }
         self.job.data = {
             "record": record,
             "imported_object": {
@@ -343,11 +348,65 @@ class LibraryObjectImportJob(JobRunner):
                 "id": imported_object.pk,
                 "created": created,
             },
+            "image_urls": image_urls,
+            "attachments": attachments,
         }
         self.job.save(update_fields=["data"])
         self.logger.info(
             f"Imported {record['object_type']} {document['manufacturer']} {document['model']}"
         )
+
+    def _attach_image(self, imported_object, face: str, uri: str):
+        """Download a library image and attach it to its NetBox object."""
+        from extras.models import ImageAttachment
+
+        response = requests.get(
+            uri,
+            headers={"Accept": "application/vnd.github.raw+json"},
+            timeout=30,
+        )
+        response.raise_for_status()
+
+        filename = unquote(urlparse(uri).path.rsplit("/", 1)[-1])
+        attachment_name = f"Device Library {face}"
+        content_type = ContentType.objects.get_for_model(imported_object, for_concrete_model=False)
+
+        # Reuse an attachment created by this plugin on later imports, while
+        # leaving any manually attached images untouched.
+        attachment = ImageAttachment.objects.filter(
+            object_type=content_type,
+            object_id=imported_object.pk,
+            name=attachment_name,
+            description="Imported from Device Library",
+        ).first()
+        if attachment is None:
+            attachment = ImageAttachment(
+                object_type=content_type,
+                object_id=imported_object.pk,
+                name=attachment_name,
+                description="Imported from Device Library",
+            )
+        old_storage = attachment.image.storage if attachment.image else None
+        old_image_name = attachment.image.name if attachment.image else None
+        attachment.image = ContentFile(response.content, name=filename)
+        attachment.save()
+        if old_storage and old_image_name and old_image_name != attachment.image.name:
+            old_storage.delete(old_image_name)
+
+        self.logger.info(f"Attached {face} image to {imported_object}")
+        return {"id": attachment.pk, "uri": uri}
+
+    def _get_image_uri(self, document: dict, face: str):
+        """Look up an imported image by the YAML object's slug and face."""
+        from .models import Image
+
+        slug = document.get("slug")
+        if not slug:
+            raise ValueError(f"Cannot resolve a {face} image without a YAML slug.")
+
+        image = Image.objects.get(slug=slug, face=face)
+        self.logger.info(f"Resolved {face} image for {slug}")
+        return image.uri
 
     @staticmethod
     def _import_netbox_object(object_type: str, document: dict):
