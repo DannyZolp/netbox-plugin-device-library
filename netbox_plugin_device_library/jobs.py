@@ -5,7 +5,9 @@ from collections import defaultdict
 from pathlib import PurePosixPath
 from urllib.parse import quote, urlparse
 
+from core.events import JOB_STARTED
 from django.db import transaction
+from extras.models import Notification
 import requests
 import yaml
 from netbox.jobs import JobRunner
@@ -18,7 +20,19 @@ class DeviceLibrarySyncJob(JobRunner):
         name = "Synchronize device library source"
 
     def run(self, **kwargs):
-        """Retrieve the configured device-library repositories."""
+        """Notify the initiating user, then synchronize configured repositories."""
+        notification = self._create_started_notification()
+        try:
+            self._sync_libraries()
+        finally:
+            # NetBox creates the terminal job notification immediately after
+            # this method returns. Remove the start notification first because
+            # a user may have only one notification per job.
+            if notification:
+                notification.delete()
+
+    def _sync_libraries(self):
+        """Retrieve and persist the configured device-library repositories."""
         from .models import LibrarySource
 
         tarball_urls = {}
@@ -51,6 +65,17 @@ class DeviceLibrarySyncJob(JobRunner):
         self.job.save(update_fields=["data"])
 
         self.logger.info("Processed %d device type repositories", len(processing_results))
+
+    def _create_started_notification(self):
+        """Create NetBox's standard Job started notification for the job owner."""
+        if not self.job.user:
+            return None
+
+        return Notification.objects.create(
+            user=self.job.user,
+            object=self.job,
+            event_type=JOB_STARTED,
+        )
 
     @staticmethod
     def _save_imported_objects(processing_results: dict):
