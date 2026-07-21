@@ -18,6 +18,13 @@ class DeviceLibrarySyncJob(JobRunner):
 
     class Meta:
         name = "Synchronize device library source"
+        job_timeout = 60 * 60
+
+    @classmethod
+    def enqueue(cls, *args, **kwargs):
+        """Queue the job with enough time to process large library archives."""
+        kwargs.setdefault("job_timeout", cls.Meta.job_timeout)
+        return super().enqueue(*args, **kwargs)
 
     def run(self, **kwargs):
         """Notify the initiating user, then synchronize configured repositories."""
