@@ -1,1 +1,5 @@
 context
+.venv/
+*.egg-info/
+
+netbox_plugin_device_library/__pycache__/

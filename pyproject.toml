@@ -4,8 +4,10 @@ version = "0.1.0"
 description = "Manage device-library sources from NetBox"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = [
-    "netbox>=4.5,<4.6",
+
+[dependency-groups]
+dev = [
+    "Django==5.2.13",
 ]
 
 [build-system]
