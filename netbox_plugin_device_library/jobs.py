@@ -3,6 +3,7 @@
 import tarfile
 from collections import defaultdict
 from pathlib import PurePosixPath
+from time import monotonic
 from urllib.parse import quote, urlparse
 
 from core.events import JOB_STARTED
@@ -46,9 +47,10 @@ class DeviceLibrarySyncJob(JobRunner):
         processing_results = {}
         for repository in LibrarySource.objects.order_by("repository").values_list("repository", flat=True):
             try:
+                self.logger.info(f"Downloading device-library repository {repository}")
                 repository_details = self._get_repository_details(repository)
                 tarball_urls[repository] = repository_details["tarball_url"]
-                processing_results[repository] = self._process_tarball(repository_details)
+                processing_results[repository] = self._process_tarball(repository, repository_details)
             except (
                 KeyError,
                 ValueError,
@@ -56,12 +58,12 @@ class DeviceLibrarySyncJob(JobRunner):
                 tarfile.TarError,
                 yaml.YAMLError,
             ) as error:
-                self.logger.error("Failed to resolve %s: %s", repository, error)
+                self.logger.error(f"Failed to resolve {repository}: {error}")
                 # An unhandled exception marks the job errored. NetBox then sends
                 # its standard failure notification to the user who started it.
                 raise
 
-            self.logger.info("Processed tarball for %s", repository)
+            self.logger.info(f"Processed tarball for {repository}")
 
         saved_counts = self._save_imported_objects(processing_results)
         self.job.data = {
@@ -71,7 +73,7 @@ class DeviceLibrarySyncJob(JobRunner):
         }
         self.job.save(update_fields=["data"])
 
-        self.logger.info("Processed %d device type repositories", len(processing_results))
+        self.logger.info(f"Processed {len(processing_results)} device type repositories")
 
     def _create_started_notification(self):
         """Create NetBox's standard Job started notification for the job owner."""
@@ -144,9 +146,10 @@ class DeviceLibrarySyncJob(JobRunner):
             "tarball_url": tarball_response.headers["Location"],
         }
 
-    def _process_tarball(self, repository_details: dict):
+    def _process_tarball(self, repository: str, repository_details: dict):
         """Parse regular YAML files in a GitHub tarball without writing to disk."""
         yaml_files = []
+        last_progress_log = monotonic()
 
         with requests.get(
             repository_details["tarball_url"],
@@ -172,23 +175,28 @@ class DeviceLibrarySyncJob(JobRunner):
                     with file_object:
                         document = yaml.safe_load(file_object)
 
-                    if not isinstance(document, dict):
-                        continue
+                    if isinstance(document, dict):
+                        yaml_files.append(
+                            {
+                                "object_type": object_type,
+                                "manufacturer": document.get("manufacturer"),
+                                "model": document.get("model"),
+                                "part_number": document.get("part_number"),
+                                "github_api_url": self._get_github_content_url(
+                                    repository_details["owner"],
+                                    repository_details["name"],
+                                    repository_path,
+                                    repository_details["default_branch"],
+                                ),
+                            }
+                        )
 
-                    yaml_files.append(
-                        {
-                            "object_type": object_type,
-                            "manufacturer": document.get("manufacturer"),
-                            "model": document.get("model"),
-                            "part_number": document.get("part_number"),
-                            "github_api_url": self._get_github_content_url(
-                                repository_details["owner"],
-                                repository_details["name"],
-                                repository_path,
-                                repository_details["default_branch"],
-                            ),
-                        }
-                    )
+                    now = monotonic()
+                    if now - last_progress_log >= 10:
+                        self.logger.info(
+                            f"Found {len(yaml_files)} library objects in {repository}"
+                        )
+                        last_progress_log = now
 
         return {"yaml_files": yaml_files}
 
