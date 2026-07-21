@@ -14,7 +14,7 @@ class Migration(migrations.Migration):
                 (
                     "repository",
                     models.URLField(
-                        help_text="The HTTPS URL of a device-library Git repository.",
+                        help_text="The HTTPS URL of a device-library GitHub repository.",
                         max_length=500,
                         unique=True,
                     ),
