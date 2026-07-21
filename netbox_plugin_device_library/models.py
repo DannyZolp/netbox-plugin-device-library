@@ -51,3 +51,18 @@ class ModuleType(ImportedLibraryObject):
 
 class RackType(ImportedLibraryObject):
     """A rack type imported from a device-library YAML document."""
+
+
+class Image(models.Model):
+    """An image referenced by a device-library object."""
+
+    slug = models.SlugField(max_length=100)
+    face = models.CharField(max_length=10)
+    uri = models.URLField(max_length=500)
+
+    class Meta:
+        db_table = "netbox_plugin_device_library_images"
+        ordering = ("slug", "face")
+
+    def __str__(self):
+        return f"{self.slug} ({self.face})"
