@@ -13,7 +13,7 @@ class LibrarySourceForm(forms.ModelForm):
             "repository": forms.URLInput(
                 attrs={
                     "class": "form-control",
-                    "placeholder": "https://github.com/netbox-community/devicetype-library.git",
+                    "placeholder": "https://github.com/user/netbox-device-library",
                 }
             )
         }
