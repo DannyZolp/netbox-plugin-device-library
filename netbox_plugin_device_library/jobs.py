@@ -14,6 +14,8 @@ import requests
 import yaml
 from netbox.jobs import JobRunner
 
+IMAGE_EXTENSIONS = {"bmp", "gif", "jpg", "png", "tiff", "webp"}
+
 
 class DeviceLibrarySyncJob(JobRunner):
     """Retrieve the configured device-library repositories for synchronization."""
@@ -67,6 +69,7 @@ class DeviceLibrarySyncJob(JobRunner):
             self.logger.info(f"Processed tarball for {repository}")
 
         saved_counts = self._save_imported_objects(processing_results)
+        saved_counts["images"] = self._save_images(processing_results)
         self.job.data = {
             "tarball_urls": tarball_urls,
             "processing_results": processing_results,
@@ -122,6 +125,27 @@ class DeviceLibrarySyncJob(JobRunner):
 
         return {object_type: len(objects) for object_type, objects in objects_by_type.items()}
 
+    @staticmethod
+    def _save_images(processing_results: dict):
+        """Upsert image metadata discovered while streaming library tarballs."""
+        from .models import Image
+
+        images = [
+            Image(slug=image["slug"], face=image["face"], uri=image["uri"])
+            for repository_result in processing_results.values()
+            for image in repository_result["images"]
+        ]
+        if images:
+            Image.objects.bulk_create(
+                images,
+                batch_size=500,
+                update_conflicts=True,
+                update_fields=["slug", "face"],
+                unique_fields=["uri"],
+            )
+
+        return len(images)
+
     def _get_repository_details(self, repository: str):
         """Resolve GitHub details needed to process a repository's default branch."""
         owner, name = self._get_github_repository_name(repository)
@@ -148,8 +172,9 @@ class DeviceLibrarySyncJob(JobRunner):
         }
 
     def _process_tarball(self, repository: str, repository_details: dict):
-        """Parse regular YAML files in a GitHub tarball without writing to disk."""
+        """Parse YAML files and collect image metadata from a GitHub tarball."""
         yaml_files = []
+        images = []
         last_progress_log = monotonic()
 
         with requests.get(
@@ -161,12 +186,16 @@ class DeviceLibrarySyncJob(JobRunner):
             response.raw.decode_content = True
             with tarfile.open(fileobj=response.raw, mode="r|gz") as archive:
                 for member in archive:
+                    if not member.isfile():
+                        continue
+
+                    image = self._get_image_details(member.name, repository_details)
+                    if image:
+                        images.append(image)
+                        continue
+
                     object_type, repository_path = self._get_yaml_details(member.name)
-                    if (
-                        not member.isfile()
-                        or not member.name.endswith(".yaml")
-                        or object_type is None
-                    ):
+                    if not member.name.endswith(".yaml") or object_type is None:
                         continue
 
                     file_object = archive.extractfile(member)
@@ -199,7 +228,7 @@ class DeviceLibrarySyncJob(JobRunner):
                         )
                         last_progress_log = now
 
-        return {"yaml_files": yaml_files}
+        return {"yaml_files": yaml_files, "images": images}
 
     @staticmethod
     def _get_yaml_details(member_name: str):
@@ -215,6 +244,48 @@ class DeviceLibrarySyncJob(JobRunner):
                 return directory_types[path_part], "/".join(path_parts[index:])
 
         return None, None
+
+    @staticmethod
+    def _get_image_details(member_name: str, repository_details: dict):
+        """Return image metadata derived from a device-library archive member."""
+        filename_parts = PurePosixPath(member_name).name.rsplit(".", 2)
+        if len(filename_parts) != 3:
+            return None
+
+        slug, face, extension = filename_parts
+        if not slug or not face or extension.lower() not in IMAGE_EXTENSIONS:
+            return None
+
+        repository_path = DeviceLibrarySyncJob._get_repository_path(member_name)
+        if repository_path is None:
+            return None
+
+        return {
+            "slug": slug,
+            "face": face,
+            "uri": DeviceLibrarySyncJob._get_github_content_url(
+                repository_details["owner"],
+                repository_details["name"],
+                repository_path,
+                repository_details["default_branch"],
+            ),
+        }
+
+    @staticmethod
+    def _get_repository_path(member_name: str):
+        """Strip the tarball's generated root directory from a repository path."""
+        repository_directories = {
+            "device-types",
+            "module-types",
+            "rack-types",
+            "elevation-images",
+        }
+        path_parts = PurePosixPath(member_name).parts
+        for index, path_part in enumerate(path_parts):
+            if path_part in repository_directories:
+                return "/".join(path_parts[index:])
+
+        return None
 
     @staticmethod
     def _get_github_content_url(owner: str, name: str, path: str, ref: str):

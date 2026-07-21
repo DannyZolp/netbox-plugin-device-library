@@ -58,7 +58,7 @@ class Image(models.Model):
 
     slug = models.SlugField(max_length=100)
     face = models.CharField(max_length=10)
-    uri = models.URLField(max_length=500)
+    uri = models.URLField(max_length=500, unique=True)
 
     class Meta:
         db_table = "netbox_plugin_device_library_images"
