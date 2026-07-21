@@ -6,7 +6,15 @@
 {% endblock %}
 
 {% block content %}
-  <form method="post" class="object-edit mt-5" id="library-sources-form">
+  <form method="post" action="{% url 'plugins:netbox_plugin_device_library:sync_all' %}" class="mt-5">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-success float-end">
+      <span class="mdi mdi-sync" aria-hidden="true"></span>
+      {% trans 'Sync All Libraries' %}
+    </button>
+  </form>
+
+  <form method="post" class="object-edit mt-2" id="library-sources-form">
     {% csrf_token %}
     {{ formset.management_form }}
 
@@ -54,14 +62,6 @@
     </div>
   </form>
 
-  <form method="post" action="{% url 'plugins:netbox_plugin_device_library:sync_all' %}" class="mt-3">
-    {% csrf_token %}
-    <button type="submit" class="btn btn-success">
-      <span class="mdi mdi-sync" aria-hidden="true"></span>
-      {% trans 'Sync All Libraries' %}
-    </button>
-  </form>
-
   <template id="library-source-empty-form">
     <div class="input-group mb-2 library-source-form">
       {% for hidden in formset.empty_form.hidden_fields %}
@@ -81,7 +81,7 @@
     const totalForms = document.getElementById('id_form-TOTAL_FORMS')
     const emptyForm = document.getElementById('library-source-empty-form')
     const githubRepositoryPattern = /^https:\/\/github\.com\/[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]+(?:\.git)?\/?$/i
-
+    
     function validateRepository(input) {
       const isMarkedForDeletion = input.closest('.library-source-form')?.querySelector('input[name$="-DELETE"]')?.checked
       const isValid = isMarkedForDeletion || !input.value || githubRepositoryPattern.test(input.value.trim())
@@ -111,7 +111,7 @@
       const repositoryInput = form.querySelector('input[name$="-repository"]')
       const icon = removeButton.querySelector('.mdi')
       if (!deleteInput || !repositoryInput || !icon) return
-
+    
       const isDeleted = !deleteInput.checked
       deleteInput.checked = isDeleted
       deleteInput.value = isDeleted ? 'on' : ''
@@ -124,24 +124,23 @@
       removeButton.setAttribute('title', isDeleted ? removeButton.dataset.undoLabel : removeButton.dataset.deleteLabel)
       icon.classList.toggle('mdi-trash-can-outline', !isDeleted)
       icon.classList.toggle('mdi-undo', isDeleted)
-
+    
       validateRepository(repositoryInput)
     })
-
+    
     sourceForms.addEventListener('input', (event) => {
       if (event.target.matches('input[name$="-repository"]')) {
         validateRepository(event.target)
       }
     })
-
   </script>
 {% endblock %}
 
 {% block head %}
   {{ block.super }}
   <style>
-    .library-source-pending-delete input[name$="-repository"] {
+    .library-source-pending-delete input[name$='-repository'] {
       text-decoration: line-through;
     }
   </style>
-{% endblock head %}
+{% endblock %}
