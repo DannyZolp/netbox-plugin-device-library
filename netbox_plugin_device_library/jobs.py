@@ -1,5 +1,7 @@
 """Background jobs for the Device Library plugin."""
 
+from time import sleep
+
 from netbox.jobs import JobRunner
 
 
@@ -22,5 +24,6 @@ class DeviceLibrarySyncJob(JobRunner):
         self.logger.info("Starting synchronization for %s", source.repository)
 
         # TODO: Fetch and import the device-library definitions for ``source``.
+        sleep(5)
 
-        self.logger.info("Synchronization job initialized for %s", source.repository)
+        self.logger.info("Synchronization completed for %s", source.repository)

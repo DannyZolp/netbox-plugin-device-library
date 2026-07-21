@@ -19,3 +19,34 @@ class LibrarySource(models.Model):
 
     def __str__(self):
         return self.repository
+
+
+class ImportedLibraryObject(models.Model):
+    """Common source metadata for an imported device-library object."""
+
+    manufacturer_name = models.CharField(max_length=100)
+    name = models.CharField(max_length=200)
+    part_number = models.CharField(max_length=200, blank=True)
+    github_api_url = models.URLField(
+        max_length=500,
+        help_text="GitHub API URL for the YAML document from which this object was imported.",
+    )
+
+    class Meta:
+        abstract = True
+        ordering = ("manufacturer_name", "name")
+
+    def __str__(self):
+        return f"{self.manufacturer_name} {self.name}"
+
+
+class DeviceType(ImportedLibraryObject):
+    """A device type imported from a device-library YAML document."""
+
+
+class ModuleType(ImportedLibraryObject):
+    """A module type imported from a device-library YAML document."""
+
+
+class RackType(ImportedLibraryObject):
+    """A rack type imported from a device-library YAML document."""
