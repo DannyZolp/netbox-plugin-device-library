@@ -6,4 +6,5 @@ from . import views
 
 urlpatterns = (
     path("settings/", views.SettingsView.as_view(), name="settings"),
+    path("settings/sync/", views.SyncAllLibrariesView.as_view(), name="sync_all"),
 )

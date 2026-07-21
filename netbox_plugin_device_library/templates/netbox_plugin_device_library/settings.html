@@ -54,6 +54,14 @@
     </div>
   </form>
 
+  <form method="post" action="{% url 'plugins:netbox_plugin_device_library:sync_all' %}" class="mt-3">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-success">
+      <span class="mdi mdi-sync" aria-hidden="true"></span>
+      {% trans 'Sync All Libraries' %}
+    </button>
+  </form>
+
   <template id="library-source-empty-form">
     <div class="input-group mb-2 library-source-form">
       {% for hidden in formset.empty_form.hidden_fields %}

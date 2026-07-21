@@ -9,6 +9,7 @@ from django.views.generic import View
 from utilities.views import ContentTypePermissionRequiredMixin
 
 from .forms import LibrarySourceForm
+from .jobs import DeviceLibrarySyncJob
 from .models import LibrarySource
 
 
@@ -42,3 +43,17 @@ class SettingsView(ContentTypePermissionRequiredMixin, View):
             return redirect(reverse("plugins:netbox_plugin_device_library:settings"))
 
         return render(request, self.template_name, {"formset": formset})
+
+
+class SyncAllLibrariesView(ContentTypePermissionRequiredMixin, View):
+    """Queue a synchronization job for every configured library source."""
+
+    http_method_names = ["post"]
+
+    def get_required_permission(self):
+        return "netbox_plugin_device_library.change_librarysource"
+
+    def post(self, request):
+        DeviceLibrarySyncJob.enqueue(user=request.user)
+        messages.success(request, "Device library synchronization queued.")
+        return redirect(reverse("plugins:netbox_plugin_device_library:settings"))
