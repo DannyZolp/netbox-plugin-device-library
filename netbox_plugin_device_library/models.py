@@ -29,6 +29,7 @@ class ImportedLibraryObject(models.Model):
     part_number = models.CharField(max_length=200, blank=True)
     github_api_url = models.URLField(
         max_length=500,
+        unique=True,
         help_text="GitHub API URL for the YAML document from which this object was imported.",
     )
 

@@ -1,9 +1,13 @@
 """Background jobs for the Device Library plugin."""
 
 import tarfile
-from urllib.parse import urlparse
+from collections import defaultdict
+from pathlib import PurePosixPath
+from urllib.parse import quote, urlparse
 
+from django.db import transaction
 import requests
+import yaml
 from netbox.jobs import JobRunner
 
 
@@ -21,9 +25,16 @@ class DeviceLibrarySyncJob(JobRunner):
         processing_results = {}
         for repository in LibrarySource.objects.order_by("repository").values_list("repository", flat=True):
             try:
-                tarball_urls[repository] = self._get_tarball_url(repository)
-                processing_results[repository] = self._process_tarball(tarball_urls[repository])
-            except (KeyError, ValueError, requests.RequestException, tarfile.TarError) as error:
+                repository_details = self._get_repository_details(repository)
+                tarball_urls[repository] = repository_details["tarball_url"]
+                processing_results[repository] = self._process_tarball(repository_details)
+            except (
+                KeyError,
+                ValueError,
+                requests.RequestException,
+                tarfile.TarError,
+                yaml.YAMLError,
+            ) as error:
                 self.logger.error("Failed to resolve %s: %s", repository, error)
                 # An unhandled exception marks the job errored. NetBox then sends
                 # its standard failure notification to the user who started it.
@@ -31,16 +42,53 @@ class DeviceLibrarySyncJob(JobRunner):
 
             self.logger.info("Processed tarball for %s", repository)
 
+        saved_counts = self._save_imported_objects(processing_results)
         self.job.data = {
             "tarball_urls": tarball_urls,
             "processing_results": processing_results,
+            "saved_counts": saved_counts,
         }
         self.job.save(update_fields=["data"])
 
         self.logger.info("Processed %d device type repositories", len(processing_results))
 
-    def _get_tarball_url(self, repository: str):
-        """Resolve the default branch's tarball redirect URL through GitHub's API."""
+    @staticmethod
+    def _save_imported_objects(processing_results: dict):
+        """Upsert parsed library objects in PostgreSQL batches."""
+        from .models import DeviceType, ModuleType, RackType
+
+        models_by_type = {
+            "device": DeviceType,
+            "module": ModuleType,
+            "rack": RackType,
+        }
+        objects_by_type = defaultdict(list)
+        for repository_result in processing_results.values():
+            for item in repository_result["yaml_files"]:
+                model = models_by_type[item["object_type"]]
+                objects_by_type[item["object_type"]].append(
+                    model(
+                        manufacturer_name=item["manufacturer"] or "",
+                        name=item["model"] or "",
+                        part_number=item["part_number"] or "",
+                        github_api_url=item["github_api_url"],
+                    )
+                )
+
+        with transaction.atomic():
+            for object_type, objects in objects_by_type.items():
+                models_by_type[object_type].objects.bulk_create(
+                    objects,
+                    batch_size=500,
+                    update_conflicts=True,
+                    update_fields=["manufacturer_name", "name", "part_number"],
+                    unique_fields=["github_api_url"],
+                )
+
+        return {object_type: len(objects) for object_type, objects in objects_by_type.items()}
+
+    def _get_repository_details(self, repository: str):
+        """Resolve GitHub details needed to process a repository's default branch."""
         owner, name = self._get_github_repository_name(repository)
         repository_data = requests.get(
             f"https://api.github.com/repos/{owner}/{name}",
@@ -57,31 +105,82 @@ class DeviceLibrarySyncJob(JobRunner):
             timeout=30,
         )
         tarball_response.raise_for_status()
-        return tarball_response.headers["Location"]
+        return {
+            "owner": owner,
+            "name": name,
+            "default_branch": default_branch,
+            "tarball_url": tarball_response.headers["Location"],
+        }
 
-    def _process_tarball(self, tarball_url: str):
-        """Stream every regular file in a GitHub tarball without writing to disk."""
-        file_count = 0
-        byte_count = 0
+    def _process_tarball(self, repository_details: dict):
+        """Parse regular YAML files in a GitHub tarball without writing to disk."""
+        yaml_files = []
 
-        with requests.get(tarball_url, stream=True, timeout=30) as response:
+        with requests.get(
+            repository_details["tarball_url"],
+            stream=True,
+            timeout=30,
+        ) as response:
             response.raise_for_status()
             response.raw.decode_content = True
             with tarfile.open(fileobj=response.raw, mode="r|gz") as archive:
                 for member in archive:
-                    if not member.isfile():
+                    object_type, repository_path = self._get_yaml_details(member.name)
+                    if (
+                        not member.isfile()
+                        or not member.name.endswith(".yaml")
+                        or object_type is None
+                    ):
                         continue
 
-                    file_count += 1
                     file_object = archive.extractfile(member)
                     if file_object is None:
                         continue
 
                     with file_object:
-                        for block in iter(lambda: file_object.read(64 * 1024), b""):
-                            byte_count += len(block)
+                        document = yaml.safe_load(file_object)
 
-        return {"files": file_count, "bytes": byte_count}
+                    if not isinstance(document, dict):
+                        continue
+
+                    yaml_files.append(
+                        {
+                            "object_type": object_type,
+                            "manufacturer": document.get("manufacturer"),
+                            "model": document.get("model"),
+                            "part_number": document.get("part_number"),
+                            "github_api_url": self._get_github_content_url(
+                                repository_details["owner"],
+                                repository_details["name"],
+                                repository_path,
+                                repository_details["default_branch"],
+                            ),
+                        }
+                    )
+
+        return {"yaml_files": yaml_files}
+
+    @staticmethod
+    def _get_yaml_details(member_name: str):
+        """Return a YAML member's type and path relative to the Git repository."""
+        directory_types = {
+            "device-types": "device",
+            "module-types": "module",
+            "rack-types": "rack",
+        }
+        path_parts = PurePosixPath(member_name).parts
+        for index, path_part in enumerate(path_parts):
+            if path_part in directory_types:
+                return directory_types[path_part], "/".join(path_parts[index:])
+
+        return None, None
+
+    @staticmethod
+    def _get_github_content_url(owner: str, name: str, path: str, ref: str):
+        """Build the GitHub Contents API request URL for one YAML file."""
+        encoded_path = quote(path, safe="/")
+        encoded_ref = quote(ref, safe="")
+        return f"https://api.github.com/repos/{owner}/{name}/contents/{encoded_path}?ref={encoded_ref}"
 
     @staticmethod
     def _get_github_repository_name(repository: str):
