@@ -346,6 +346,7 @@ class LibraryObjectImportJob(JobRunner):
                 "type": record["object_type"],
                 "id": imported_object.pk,
                 "created": created,
+                "url": imported_object.get_absolute_url(),
             },
             "image_urls": image_urls,
             "images": images,

@@ -13,4 +13,9 @@ urlpatterns = (
         views.QueueLibraryObjectImportView.as_view(),
         name="queue_library_object_import",
     ),
+    path(
+        "library/import-jobs/<int:pk>/",
+        views.LibraryObjectImportStatusView.as_view(),
+        name="library_object_import_status",
+    ),
 )

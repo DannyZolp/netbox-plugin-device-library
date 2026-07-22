@@ -8,6 +8,7 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{% trans 'Close' %}"></button>
       </div>
       <div class="modal-body">
+        <div id="library-import-status-{{ object_type }}" class="text-muted mb-3" aria-live="polite"></div>
         <form hx-get="{% url 'plugins:netbox_plugin_device_library:library_search' %}" hx-target="#library-search-results-{{ object_type }}" hx-trigger="input delay:300ms, submit">
           <input type="hidden" name="object_type" value="{{ object_type }}">
           <input type="search" class="form-control" name="q" placeholder="{% trans 'Search manufacturer, model, or part number' %}" aria-label="{% trans 'Search device library' %}" autocomplete="off">

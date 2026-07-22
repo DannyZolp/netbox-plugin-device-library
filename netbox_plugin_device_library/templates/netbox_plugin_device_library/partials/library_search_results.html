@@ -18,9 +18,9 @@
             <td>{{ object.name }}</td>
             <td>{{ object.part_number|default:"—" }}</td>
             <td class="text-end">
-              <form hx-post="{% url 'plugins:netbox_plugin_device_library:queue_library_object_import' object_type=object_type pk=object.pk %}" hx-swap="none">
+              <form method="post" action="{% url 'plugins:netbox_plugin_device_library:queue_library_object_import' object_type=object_type pk=object.pk %}" class="library-object-import-form">
                 {% csrf_token %}
-                <button type="submit" class="btn btn-sm btn-secondary" title="{% trans 'Add from Library' %}" aria-label="{% trans 'Add from Library' %}">
+                <button type="submit" class="btn btn-sm" title="{% trans 'Add from Library' %}" aria-label="{% trans 'Add from Library' %}">
                   <span class="mdi mdi-plus" aria-hidden="true"></span>
                 </button>
               </form>

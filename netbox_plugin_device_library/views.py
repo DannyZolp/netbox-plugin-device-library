@@ -5,11 +5,12 @@ from django.contrib.postgres.search import SearchQuery, SearchVector
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.forms import modelformset_factory
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.generic import View
 from core.choices import JobStatusChoices
+from core.models import Job
 from utilities.views import ContentTypePermissionRequiredMixin
 
 from .forms import LibrarySourceForm
@@ -158,5 +159,37 @@ class QueueLibraryObjectImportView(ContentTypePermissionRequiredMixin, View):
             "part_number": record.part_number,
             "github_api_url": record.github_api_url,
         }
-        LibraryObjectImportJob.enqueue(user=request.user, record=record_data)
-        return HttpResponse(status=204)
+        job = LibraryObjectImportJob.enqueue(user=request.user, record=record_data)
+        return JsonResponse(
+            {
+                "status_url": reverse(
+                    "plugins:netbox_plugin_device_library:library_object_import_status",
+                    kwargs={"pk": job.pk},
+                ),
+            },
+            status=202,
+        )
+
+
+class LibraryObjectImportStatusView(ContentTypePermissionRequiredMixin, View):
+    """Report the current import job state to its initiating user's modal."""
+
+    http_method_names = ["get"]
+
+    def get_required_permission(self):
+        return "netbox_plugin_device_library.change_librarysource"
+
+    def get(self, request, pk):
+        job = get_object_or_404(
+            Job,
+            pk=pk,
+            name=LibraryObjectImportJob.name,
+            user=request.user,
+        )
+        imported_object = (job.data or {}).get("imported_object", {})
+        return JsonResponse(
+            {
+                "status": job.status,
+                "object_url": imported_object.get("url"),
+            }
+        )

@@ -1,8 +1,71 @@
 {% load i18n %}
 
-<button type="button" class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#library-search-modal-{{ object_type }}" hx-get="{% url 'plugins:netbox_plugin_device_library:library_search' %}?object_type={{ object_type }}" hx-target="#library-search-results-{{ object_type }}">
+<button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#library-search-modal-{{ object_type }}" hx-get="{% url 'plugins:netbox_plugin_device_library:library_search' %}?object_type={{ object_type }}" hx-target="#library-search-results-{{ object_type }}">
   <span class="mdi mdi-library-plus" aria-hidden="true"></span>
   {% trans 'Add from Library' %}
 </button>
 
 {% include 'netbox_plugin_device_library/partials/library_search_modal.html' %}
+
+<script>
+  ;(() => {
+    const modal = document.getElementById('library-search-modal-{{ object_type }}')
+    const status = document.getElementById('library-import-status-{{ object_type }}')
+    let pollingTimeout
+  
+    const stopPolling = () => {
+      window.clearTimeout(pollingTimeout)
+      pollingTimeout = undefined
+    }
+  
+    const pollImportJob = async (statusUrl) => {
+      if (!modal.classList.contains('show')) return
+  
+      try {
+        const response = await fetch(statusUrl, { credentials: 'same-origin' })
+        if (!response.ok) throw new Error('{% trans "Unable to check import status." %}')
+  
+        const result = await response.json()
+        if (result.status === 'completed' && result.object_url) {
+          window.location.assign(result.object_url)
+          return
+        }
+        if (['completed', 'errored', 'failed'].includes(result.status)) {
+          status.textContent = '{% trans "The library import did not complete." %}'
+          return
+        }
+  
+        pollingTimeout = window.setTimeout(() => pollImportJob(statusUrl), 1000)
+      } catch (error) {
+        status.textContent = error.message
+      }
+    }
+  
+    modal.addEventListener('hide.bs.modal', stopPolling)
+    modal.addEventListener('submit', async (event) => {
+      const form = event.target.closest('.library-object-import-form')
+      if (!form) return
+  
+      event.preventDefault()
+      stopPolling()
+      const submitButton = form.querySelector('button[type="submit"]')
+      submitButton.disabled = true
+      status.textContent = '{% trans "Creating library object…" %}'
+  
+      try {
+        const response = await fetch(form.action, {
+          method: 'POST',
+          body: new FormData(form),
+          credentials: 'same-origin'
+        })
+        if (!response.ok) throw new Error('{% trans "Unable to queue library import." %}')
+  
+        const result = await response.json()
+        pollImportJob(result.status_url)
+      } catch (error) {
+        submitButton.disabled = false
+        status.textContent = error.message
+      }
+    })
+  })()
+</script>
