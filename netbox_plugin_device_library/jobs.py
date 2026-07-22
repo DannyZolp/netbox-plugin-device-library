@@ -399,7 +399,11 @@ class LibraryObjectImportJob(JobRunner):
             raise ValueError(f"Unsupported library object type: {object_type}")
 
         with transaction.atomic():
-            manufacturer, _ = Manufacturer.objects.get_or_create(name=document["manufacturer"])
+            manufacturer_name = document["manufacturer"]
+            manufacturer, _ = Manufacturer.objects.get_or_create(
+                name=manufacturer_name,
+                defaults={"slug": manufacturer_name.lower().replace(" ", "-")},
+            )
             model = document["model"]
             part_number = document.get("part_number", "")
 
