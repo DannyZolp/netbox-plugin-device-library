@@ -48,17 +48,19 @@
               <span class="mdi mdi-plus-thick" aria-hidden="true"></span>
               {% trans 'Add Library' %}
             </button>
-            <button
-              type="button"
-              class="btn btn-primary"
-              id="sync-all-libraries"
-              data-sync-url="{% url 'plugins:netbox_plugin_device_library:sync_all' %}"
-              onclick="syncAllLibraries()"
-              {% if sync_running %}disabled aria-disabled="true"{% endif %}
-            >
-              <span class="mdi mdi-sync" aria-hidden="true"></span>
-              {% trans 'Sync All Libraries' %}
-            </button>
+            {% if has_library_sources %}
+              <button
+                type="button"
+                class="btn btn-outline-success"
+                id="sync-all-libraries"
+                data-sync-url="{% url 'plugins:netbox_plugin_device_library:sync_all' %}"
+                onclick="syncAllLibraries()"
+                {% if sync_running %}disabled aria-disabled="true"{% endif %}
+              >
+                <span class="mdi mdi-sync" aria-hidden="true"></span>
+                {% trans 'Sync All Libraries' %}
+              </button>
+            {% endif %}
           </div>
         </div>
       </div>

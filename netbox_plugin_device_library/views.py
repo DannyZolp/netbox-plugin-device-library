@@ -43,6 +43,7 @@ class SettingsView(ContentTypePermissionRequiredMixin, View):
             {
                 "formset": self.get_formset(),
                 "sync_running": sync_job_is_enqueued(),
+                "has_library_sources": LibrarySource.objects.exists(),
             },
         )
 
@@ -60,6 +61,7 @@ class SettingsView(ContentTypePermissionRequiredMixin, View):
             {
                 "formset": formset,
                 "sync_running": sync_job_is_enqueued(),
+                "has_library_sources": LibrarySource.objects.exists(),
             },
         )
 
